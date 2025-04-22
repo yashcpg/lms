@@ -1,0 +1,23 @@
+Unable to create a 'DbContext' of type 'ApplicationDbContext'. The exception 'Unable to determine the relationship represented by navigation 'ApplicationUser.LeaveRequests' of type 'ICollection<LeaveRequest>'. Either manually configure the relationship, or ignore this property using the '[NotMapped]' attribute or by using 'EntityTypeBuilder.Ignore' in 'OnModelCreating'.' was thrown while attempting to create an instance. For the different patterns supported at design time, see https://go.microsoft.com/fwlink/?linkid=851728
+
+
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
+
+public class ApplicationDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, string>
+{
+    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+        : base(options)
+    {
+    }
+
+    public DbSet<LeaveType> LeaveTypes { get; set; }
+    public DbSet<LeaveRequest> LeaveRequests { get; set; }
+
+    protected override void OnModelCreating(ModelBuilder builder)
+    {
+        base.OnModelCreating(builder);
+
+        // Additional configurations can be added here
+    }
+}
