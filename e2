@@ -1,46 +1,6 @@
-	
-Error: Internal Server Error
-
-Response body
-Download
 Microsoft.EntityFrameworkCore.DbUpdateException: An error occurred while saving the entity changes. See the inner exception for details.
- ---> System.ArgumentException: Cannot write DateTime with Kind=Local to PostgreSQL type 'timestamp with time zone', only UTC is supported. Note that it's not possible to mix DateTimes with different Kinds in an array, range, or multirange. (Parameter 'value')
-   at Npgsql.Internal.Converters.DateTimeConverterResolver`1.Get(DateTime value, Nullable`1 expectedPgTypeId, Boolean validateOnly)
-   at Npgsql.Internal.Converters.DateTimeConverterResolver.<>c.<CreateResolver>b__0_0(DateTimeConverterResolver`1 resolver, DateTime value, Nullable`1 expectedPgTypeId)
+ ---> Npgsql.PostgresException (0x80004005): 23502: null value in column "UserId" of relation "LeaveRequests" violates not-null constraint
 
-
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-
-namespace lms.Models
-{
-    public class LeaveRequest
-{
-    public int Id { get; set; }
-
-    public string UserId { get; set; }  // FK to ApplicationUser (Employee)
-    public ApplicationUser User { get; set; }  // Navigation property to ApplicationUser
-    
-    public int LeaveTypeId { get; set; }  // FK to LeaveType
-    public LeaveType LeaveType { get; set; }  // Navigation property to LeaveType
-    
-    public DateTime StartDate { get; set; }=DateTime.UtcNow;
-    public DateTime EndDate { get; set; }=DateTime.UtcNow;
-    
-    public int TotalDays { get; set; }  // Total number of leave days requested
-    
-    public string Reason { get; set; }  // Reason for leave
-    
-    public string Status { get; set; }  // Pending, Approved, Rejected, Canceled
-    
-    public string ManagerId { get; set; }  // FK to ApplicationUser (Manager)
-    public ApplicationUser Manager { get; set; }  // Navigation property to Manager
-    
-    public DateTime? DecisionDate { get; set; }=DateTime.UtcNow;  // Date when the manager approved/rejected the leave request
-    
-    public DateTime CreatedAt { get; set; } =DateTime.UtcNow;// Date when the leave request was created
-}
-}
+DETAIL: Detail redacted as it may contain sensitive data. Specify 'Include Error Detail' in the connection string to include this information.
+   at Npgsql.Internal.NpgsqlConnector.ReadMessageLong(Boolean async, DataRowLoadingMode dataRowLoadingMode, Boolean readingNotifications, Boolean isReadingPrependedMessage)
+   at System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder`1.StateMachineBox`1.System.Threading.Tasks.Sources.IValueTaskSource<TResult>.GetResult(Int16 token)
