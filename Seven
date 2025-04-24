@@ -1,0 +1,92 @@
+Great catch — the error you’re seeing is totally valid.
+
+Your controller is trying to call this method:
+
+_leaveRequestService.GetLeaveRequestsForEmployeeAsync(userId);
+
+But that method hasn’t been defined yet in your LeaveRequestService. So let’s implement it (and also one for managers).
+
+
+---
+
+Step 1: Implement the missing methods in LeaveRequestService
+
+// Get all leave requests submitted by a specific employee
+public async Task<List<LeaveRequest>> GetLeaveRequestsForEmployeeAsync(string userId)
+{
+    return await _context.LeaveRequests
+        .Where(lr => lr.UserId == userId)
+        .OrderByDescending(lr => lr.CreatedAt)
+        .ToListAsync();
+}
+
+// Get all leave requests submitted to a specific manager
+public async Task<List<LeaveRequest>> GetLeaveRequestsForManagerAsync(string managerId)
+{
+    return await _context.LeaveRequests
+        .Where(lr => lr.ManagerId == managerId || lr.Status == "Pending")
+        .OrderByDescending(lr => lr.CreatedAt)
+        .ToListAsync();
+}
+
+You may also want to Include() related entities (like LeaveType or User) if needed:
+
+.Include(lr => lr.LeaveType)
+.Include(lr => lr.User)
+
+
+---
+
+Step 2: Add required using directives at the top
+
+Make sure you have these:
+
+using Microsoft.EntityFrameworkCore;
+
+
+---
+
+Now your controller calls like:
+
+var leaveRequests = await _leaveRequestService.GetLeaveRequestsForEmployeeAsync(userId);
+
+will work properly.
+
+Would you like me to also help build DTOs so you don’t return full LeaveRequest models directly from the API?
+
+Sure! Here's a clean and complete version of the LeaveRequestCreateDto:
+
+using System;
+using System.ComponentModel.DataAnnotations;
+
+namespace lms.Dtos
+{
+    public class LeaveRequestCreateDto
+    {
+        [Required]
+        public int LeaveTypeId { get; set; }
+
+        [Required]
+        [DataType(DataType.Date)]
+        public DateTime StartDate { get; set; }
+
+        [Required]
+        [DataType(DataType.Date)]
+        public DateTime EndDate { get; set; }
+
+        [MaxLength(500)]
+        public string Reason { get; set; }
+    }
+}
+
+Notes:
+
+LeaveTypeId: The type of leave the employee is applying for.
+
+StartDate / EndDate: Dates for the leave request.
+
+Reason: Optional, but it's good to include a reason field with a max length for clean data.
+
+
+Let me know if you also want to create a LeaveRequestDto for returning leave request data in the response.
+
