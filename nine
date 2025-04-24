@@ -6,6 +6,7 @@ using lms.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using lms.Data; // <-- Add this for DataSeeder
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,7 +35,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// Add authorization (if needed)
+// Add authorization (policies)
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AdminPolicy", policy => policy.RequireRole("Admin"));
@@ -45,20 +46,20 @@ builder.Services.AddAuthorization(options =>
 // Add controllers
 builder.Services.AddControllers();
 
-// Configure Swagger
+// Add Swagger/OpenAPI
+builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Ensure roles are created and an admin user exists
+// Seed Roles, Admin User, and Leave Types
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
-    var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
-    await RoleInitializer.InitializeRoles(services, userManager);
+    await DataSeeder.SeedRolesAndAdminAsync(services);
 }
 
-// Configure the HTTP request pipeline.
+// Configure middleware
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
@@ -66,18 +67,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "LMS API v1"));
 }
 
-// Use authentication and authorization middleware
+app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Map controllers to endpoints
 app.MapControllers();
-// Call the data seeder here
-using (var scope = app.Services.CreateScope())
-{
-    var services = scope.ServiceProvider;
-    await lms.Data.DataSeeder.SeedRolesAndAdminAsync(services);
-}
 
-// Run the application
 app.Run();
