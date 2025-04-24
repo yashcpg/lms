@@ -1,0 +1,192 @@
+System.InvalidOperationException: Unable to resolve service for type 'lms.Services.LeaveRequestService' while attempting to activate 'lms.Controller.LeaveRequestController'.
+   at Microsoft.Extensions.DependencyInjection.ActivatorUtilities.ThrowHelperUnableToResolveService(Type type, Type requiredBy)
+   at lambda_method393(Closure, IServiceProvider, Object[])
+   at Microsoft.AspNetCore.Mvc.Controllers.ControllerFactoryProvider.<>c__DisplayClass6_0.<CreateControllerFactory>g__CreateController|0(ControllerContext controllerContext)
+
+
+   using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using lms.DTO;
+using lms.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace lms.Controller
+{
+   [Route("api/[controller]")]
+[ApiController]
+public class LeaveRequestController : ControllerBase
+{
+    private readonly LeaveRequestService _leaveRequestService;
+
+    public LeaveRequestController(LeaveRequestService leaveRequestService)
+    {
+        _leaveRequestService = leaveRequestService;
+    }
+
+    // POST: api/leaverequest/apply
+    [Authorize]
+    [HttpPost("apply")]
+    public async Task<IActionResult> ApplyForLeave([FromBody] LeaveRequestCreateDto leaveRequestDto)
+    {
+        var userId = User.FindFirst("sub")?.Value; // Get employee ID from JWT claims
+        var leaveRequest = await _leaveRequestService.CreateLeaveRequestAsync(userId, leaveRequestDto);
+        return Ok(leaveRequest);
+    }
+
+    // POST: api/leaverequest/approve/{id}
+    [Authorize(Roles = "Manager")]
+    [HttpPost("approve/{id}")]
+    public async Task<IActionResult> ApproveLeave(int id)
+    {
+        var managerId = User.FindFirst("sub")?.Value; // Get manager ID from JWT claims
+        var leaveRequest = await _leaveRequestService.ApproveLeaveRequestAsync(id, managerId);
+        return Ok(leaveRequest);
+    }
+
+    // POST: api/leaverequest/reject/{id}
+    [Authorize(Roles = "Manager")]
+    [HttpPost("reject/{id}")]
+    public async Task<IActionResult> RejectLeave(int id)
+    {
+        var managerId = User.FindFirst("sub")?.Value; // Get manager ID from JWT claims
+        var leaveRequest = await _leaveRequestService.RejectLeaveRequestAsync(id, managerId);
+        return Ok(leaveRequest);
+    }
+
+    // GET: api/leaverequest/myrequests
+    [Authorize]
+    [HttpGet("myrequests")]
+     [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> GetMyLeaveRequests()
+    {
+        var userId = User.FindFirst("sub")?.Value; // Get employee ID from JWT claims
+        var leaveRequests = await _leaveRequestService.GetLeaveRequestsForEmployeeAsync(userId);
+        return Ok(leaveRequests);
+    }
+
+    // GET: api/leaverequest/teamrequests
+    [Authorize(Roles = "Manager")]
+    [HttpGet("teamrequests")]
+    public async Task<IActionResult> GetTeamLeaveRequests()
+    {
+        var managerId = User.FindFirst("sub")?.Value; // Get manager ID from JWT claims
+        var leaveRequests = await _leaveRequestService.GetLeaveRequestsForManagerAsync(managerId);
+        return Ok(leaveRequests);
+    }
+}
+}using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using lms.DTO;
+using lms.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace lms.Services
+{
+    public class LeaveRequestService
+{
+    private readonly ApplicationDbContext _context;
+
+    public LeaveRequestService(ApplicationDbContext context)
+    {
+        _context = context;
+    }
+
+    // Create a new leave request
+    public async Task<LeaveRequest> CreateLeaveRequestAsync(string userId, LeaveRequestCreateDto leaveRequestDto)
+    {
+        // Check if the leave dates are in the future
+        if (leaveRequestDto.StartDate < DateTime.Now)
+        {
+            throw new InvalidOperationException("Cannot apply for leave in the past.");
+        }
+
+        var leaveRequest = new LeaveRequest
+        {
+            UserId = userId,
+            LeaveTypeId = leaveRequestDto.LeaveTypeId, // We need LeaveTypeId here
+            StartDate = leaveRequestDto.StartDate,
+            EndDate = leaveRequestDto.EndDate,
+            Reason = leaveRequestDto.Reason,
+            Status = "Pending",
+            CreatedAt = DateTime.Now,
+            TotalDays = (leaveRequestDto.EndDate - leaveRequestDto.StartDate).Days + 1  // Calculating total leave days
+        };
+
+        _context.LeaveRequests.Add(leaveRequest);
+        await _context.SaveChangesAsync();
+
+        return leaveRequest;
+    }
+
+    // Approve leave request
+    public async Task<LeaveRequest> ApproveLeaveRequestAsync(int leaveRequestId, string managerId)
+    {
+        var leaveRequest = await _context.LeaveRequests.FindAsync(leaveRequestId);
+
+        if (leaveRequest == null)
+        {
+            throw new ArgumentException("Leave request not found");
+        }
+
+        if (leaveRequest.Status != "Pending")
+        {
+            throw new InvalidOperationException("Only pending requests can be approved.");
+        }
+
+        leaveRequest.Status = "Approved";
+        leaveRequest.ManagerId = managerId;  // Set the manager who approved
+        leaveRequest.DecisionDate = DateTime.Now;  // Set the decision date
+
+        await _context.SaveChangesAsync();
+
+        return leaveRequest;
+    }
+
+    // Reject leave request
+    public async Task<LeaveRequest> RejectLeaveRequestAsync(int leaveRequestId, string managerId)
+    {
+        var leaveRequest = await _context.LeaveRequests.FindAsync(leaveRequestId);
+
+        if (leaveRequest == null)
+        {
+            throw new ArgumentException("Leave request not found");
+        }
+
+        if (leaveRequest.Status != "Pending")
+        {
+            throw new InvalidOperationException("Only pending requests can be rejected.");
+        }
+
+        leaveRequest.Status = "Rejected";
+        leaveRequest.ManagerId = managerId;  // Set the manager who rejected
+        leaveRequest.DecisionDate = DateTime.Now;  // Set the decision date
+
+        await _context.SaveChangesAsync();
+
+        return leaveRequest;
+    }
+    public async Task<List<LeaveRequest>> GetLeaveRequestsForEmployeeAsync(string userId)
+{
+    return await _context.LeaveRequests
+        .Where(lr => lr.UserId == userId)
+        .OrderByDescending(lr => lr.CreatedAt)
+        .ToListAsync();
+}
+
+// Get all leave requests submitted to a specific manager
+public async Task<List<LeaveRequest>> GetLeaveRequestsForManagerAsync(string managerId)
+{
+    return await _context.LeaveRequests
+        .Where(lr => lr.ManagerId == managerId || lr.Status == "Pending")
+        .OrderByDescending(lr => lr.CreatedAt)
+        .ToListAsync();
+}
+}
+
+    
+}
