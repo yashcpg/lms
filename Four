@@ -1,0 +1,278 @@
+Great! Now that we've set up the DbContext, Program.cs, and the database migrations, the next steps will involve building the core functionality of your Leave Management System (LMS), starting with user registration, login, and JWT authentication.
+
+Next Steps:
+
+1. Implement User Registration and Login (Authentication)
+
+We need to implement the functionality for user registration, login, and JWT token generation for authentication. This will involve creating an AuthController to handle these operations.
+
+a. Create AuthController
+
+Let's create an AuthController to handle User Registration and Login (JWT token generation).
+
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Text;
+using System.Security.Claims;
+using LMS.Models; // Ensure this namespace contains your ApplicationUser
+
+[Route("api/[controller]")]
+[ApiController]
+public class AuthController : ControllerBase
+{
+    private readonly UserManager<ApplicationUser> _userManager;
+    private readonly SignInManager<ApplicationUser> _signInManager;
+    private readonly IConfiguration _configuration;
+
+    public AuthController(UserManager<ApplicationUser> userManager, 
+                          SignInManager<ApplicationUser> signInManager,
+                          IConfiguration configuration)
+    {
+        _userManager = userManager;
+        _signInManager = signInManager;
+        _configuration = configuration;
+    }
+
+    // POST api/auth/register
+    [HttpPost("register")]
+    public async Task<IActionResult> Register([FromBody] RegisterModel model)
+    {
+        var user = new ApplicationUser
+        {
+            UserName = model.Email,
+            Email = model.Email,
+            FullName = model.FullName,
+            Department = model.Department
+        };
+
+        var result = await _userManager.CreateAsync(user, model.Password);
+
+        if (!result.Succeeded)
+            return BadRequest(result.Errors);
+
+        // Add default role (e.g., Employee)
+        await _userManager.AddToRoleAsync(user, "Employee");
+
+        return Ok(new { Message = "Registration successful" });
+    }
+
+    // POST api/auth/login
+    [HttpPost("login")]
+    public async Task<IActionResult> Login([FromBody] LoginModel model)
+    {
+        var user = await _userManager.FindByEmailAsync(model.Email);
+
+        if (user == null)
+            return Unauthorized(new { Message = "Invalid credentials" });
+
+        var result = await _signInManager.PasswordSignInAsync(user, model.Password, false, false);
+
+        if (!result.Succeeded)
+            return Unauthorized(new { Message = "Invalid credentials" });
+
+        var token = GenerateJwtToken(user);
+        return Ok(new { Token = token });
+    }
+
+    private string GenerateJwtToken(ApplicationUser user)
+    {
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, user.Id),
+            new Claim(ClaimTypes.Name, user.UserName),
+            new Claim(ClaimTypes.Role, "Employee")  // This could be dynamically set based on roles
+        };
+
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]));
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var token = new JwtSecurityToken(
+            issuer: _configuration["Jwt:Issuer"],
+            audience: _configuration["Jwt:Audience"],
+            claims: claims,
+            expires: DateTime.Now.AddDays(7),
+            signingCredentials: creds);
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+}
+
+b. Explanation of the AuthController
+
+1. User Registration:
+
+The Register action creates a new user using UserManager<ApplicationUser>.
+
+After user creation, we assign them a default role, such as "Employee". You can extend this to support role selection during registration.
+
+
+
+2. User Login:
+
+The Login action verifies user credentials using SignInManager<ApplicationUser>. If credentials are correct, we generate a JWT token.
+
+
+
+3. GenerateJwtToken:
+
+This method generates a JWT token that is returned to the user after a successful login.
+
+The token includes claims (like NameIdentifier, Name, and Role) and is signed using a secret key defined in appsettings.json.
+
+
+
+
+c. Create RegisterModel and LoginModel (DTOs)
+
+You'll also need DTOs for the registration and login requests.
+
+RegisterModel (DTO)
+
+public class RegisterModel
+{
+    public string FullName { get; set; }
+    public string Department { get; set; }
+    public string Email { get; set; }
+    public string Password { get; set; }
+}
+
+LoginModel (DTO)
+
+public class LoginModel
+{
+    public string Email { get; set; }
+    public string Password { get; set; }
+}
+
+These models represent the data you will receive in the HTTP requests for registering and logging in.
+
+
+---
+
+2. Test the Authentication Endpoints
+
+1. Register a User:
+
+POST to /api/auth/register
+
+Request body:
+
+
+{
+    "FullName": "John Doe",
+    "Department": "HR",
+    "Email": "johndoe@example.com",
+    "Password": "StrongPassword123"
+}
+
+
+2. Login the User:
+
+POST to /api/auth/login
+
+Request body:
+
+
+{
+    "Email": "johndoe@example.com",
+    "Password": "StrongPassword123"
+}
+
+A successful response will return a JWT token:
+
+
+{
+    "Token": "your_jwt_token_here"
+}
+
+
+
+
+---
+
+3. Securing Routes Using JWT Authorization
+
+Now, we need to secure the routes (for example, the LeaveRequest creation) by requiring JWT authentication.
+
+You can add this to your LeaveRequestController:
+
+[Authorize]
+[Route("api/[controller]")]
+[ApiController]
+public class LeaveRequestController : ControllerBase
+{
+    // Controller actions go here
+}
+
+The [Authorize] attribute ensures that only authenticated users can access the actions in this controller.
+
+Additionally, you can specify roles for certain actions, for example:
+
+[Authorize(Roles = "Manager")]
+[HttpPost("approve/{id}")]
+public IActionResult ApproveLeave(int id)
+{
+    // Only managers can approve leave requests
+    return Ok();
+}
+
+
+---
+
+4. Set Up Role-Based Authorization (Optional)
+
+To add roles like Manager and Admin, you can extend the registration process by checking for an admin role or setting different roles based on your requirements.
+
+1. Add role creation during application startup (in Program.cs or Startup.cs):
+
+
+
+public static async Task InitializeRoles(IServiceProvider serviceProvider, UserManager<ApplicationUser> userManager)
+{
+    var roleManager = serviceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+    
+    // Add roles if they do not exist
+    string[] roleNames = { "Admin", "Manager", "Employee" };
+    foreach (var roleName in roleNames)
+    {
+        var roleExist = await roleManager.RoleExistsAsync(roleName);
+        if (!roleExist)
+        {
+            await roleManager.CreateAsync(new IdentityRole(roleName));
+        }
+    }
+
+    // Create an admin user if needed
+    var adminUser = await userManager.FindByEmailAsync("admin@example.com");
+    if (adminUser == null)
+    {
+        var newAdmin = new ApplicationUser
+        {
+            UserName = "admin@example.com",
+            Email = "admin@example.com",
+            FullName = "Admin User"
+        };
+        var result = await userManager.CreateAsync(newAdmin, "AdminPassword123");
+        if (result.Succeeded)
+        {
+            await userManager.AddToRoleAsync(newAdmin, "Admin");
+        }
+    }
+}
+
+Call this InitializeRoles method inside Program.cs to create the necessary roles when the application starts.
+
+
+---
+
+Next Steps After Authentication:
+
+Leave Request Management: Implement endpoints for employees to apply for leave, and for managers to approve/reject leave requests.
+
+Leave Balance Tracking: Deduct leave days from the employee’s balance when leave is approved.
+
+Notifications: Send notifications (via email/SMS) on leave request approval, rejection, etc.
+
+
+Let me know if you'd like to proceed with implementing leave request management next, or if you have any questions about the authentication setup!
