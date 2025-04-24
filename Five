@@ -1,0 +1,173 @@
+Sure! Below is the complete code that sets up role initialization and creates an admin user when the application starts. This method will ensure that roles like Admin, Manager, and Employee exist in the system and will create an admin user if one does not already exist.
+
+You would typically call this method in the Program.cs file to initialize roles when the application starts.
+
+Complete Code for InitializeRoles Method
+
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection;
+using System;
+using System.Threading.Tasks;
+
+namespace LMS
+{
+    public static class RoleInitializer
+    {
+        // This method initializes the roles in the application and creates the admin user if needed
+        public static async Task InitializeRoles(IServiceProvider serviceProvider, UserManager<ApplicationUser> userManager)
+        {
+            var roleManager = serviceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+            
+            // Define the roles that need to be created
+            string[] roleNames = { "Admin", "Manager", "Employee" };
+
+            // Check if the roles exist, and create them if they don't
+            foreach (var roleName in roleNames)
+            {
+                var roleExist = await roleManager.RoleExistsAsync(roleName);
+                if (!roleExist)
+                {
+                    await roleManager.CreateAsync(new IdentityRole(roleName));
+                }
+            }
+
+            // Create an admin user if it does not exist
+            var adminUser = await userManager.FindByEmailAsync("admin@example.com");
+            if (adminUser == null)
+            {
+                var newAdmin = new ApplicationUser
+                {
+                    UserName = "admin@example.com",
+                    Email = "admin@example.com",
+                    FullName = "Admin User"
+                };
+
+                // Create the admin user with a default password
+                var result = await userManager.CreateAsync(newAdmin, "AdminPassword123");
+                if (result.Succeeded)
+                {
+                    // Assign the admin role to the new admin user
+                    await userManager.AddToRoleAsync(newAdmin, "Admin");
+                }
+            }
+        }
+    }
+}
+
+Changes to Program.cs to Call InitializeRoles
+
+To make sure that the roles are initialized when the application starts, you need to call the InitializeRoles method in your Program.cs. This is typically done at the end of the configuration pipeline.
+
+Here is how you can modify your Program.cs:
+
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using LMS;
+using Microsoft.Extensions.DependencyInjection;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Register Identity with EF Core
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
+    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddDefaultTokenProviders();
+
+// Add Authentication (JWT) 
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]))
+        };
+    });
+
+// Add authorization (if needed)
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminPolicy", policy => policy.RequireRole("Admin"));
+    options.AddPolicy("ManagerPolicy", policy => policy.RequireRole("Manager"));
+    options.AddPolicy("EmployeePolicy", policy => policy.RequireRole("Employee"));
+});
+
+// Add controllers
+builder.Services.AddControllers();
+
+// Configure Swagger
+builder.Services.AddSwaggerGen();
+
+var app = builder.Build();
+
+// Ensure roles are created and an admin user exists
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
+    await RoleInitializer.InitializeRoles(services, userManager);
+}
+
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+    app.UseSwagger();
+    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "LMS API v1"));
+}
+
+// Use authentication and authorization middleware
+app.UseAuthentication();
+app.UseAuthorization();
+
+// Map controllers to endpoints
+app.MapControllers();
+
+// Run the application
+app.Run();
+
+Explanation of the Code
+
+1. Role Initialization:
+The InitializeRoles method checks whether the required roles (Admin, Manager, Employee) exist. If any of the roles do not exist, it creates them.
+
+
+2. Admin User Creation:
+The method checks if an admin user exists (using the email admin@example.com). If the admin user is not found, a new admin user is created with a default password (AdminPassword123), and the admin role is assigned.
+
+
+3. Program.cs Configuration:
+In the Program.cs file, we use app.Services.CreateScope() to obtain a scoped instance of services. Then, we call RoleInitializer.InitializeRoles to initialize the roles and ensure that the admin user exists when the application starts.
+
+
+4. Swagger UI:
+We configure Swagger to visualize and interact with the API in development mode. This will help you test endpoints such as user registration and login.
+
+
+5. Authentication and Authorization Middleware:
+The app.UseAuthentication() and app.UseAuthorization() ensure that the authentication and authorization middleware are part of the request pipeline. This ensures that only authenticated users can access protected routes.
+
+
+
+Additional Considerations
+
+Password Hashing:
+The UserManager.CreateAsync method automatically hashes the password before storing it, so you don’t need to manually hash the password.
+
+Security:
+Always make sure to use a strong password in production environments. The password used here ("AdminPassword123") is just for example purposes and should be replaced with a more secure one in a real application.
+
+Testing:
+After running the application, check if the Admin, Manager, and Employee roles are created and if the admin user is created. You can do this either through the database or by querying the API (using a user with Admin role).
+
+
+Let me know if you need any further clarifications or help with the next steps!
+
