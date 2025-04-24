@@ -1,0 +1,129 @@
+Absolutely! Here's the complete working code to seed roles, an admin user, and default leave types on app startup — all fully integrated into your existing ASP.NET Core project.
+
+
+---
+
+✅ 1. DataSeeder.cs
+
+Create this in a folder named Data/:
+
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using lms.Models;
+
+namespace lms.Data
+{
+    public static class DataSeeder
+    {
+        public static async Task SeedRolesAndAdminAsync(IServiceProvider serviceProvider)
+        {
+            var roleManager = serviceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+            var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var context = serviceProvider.GetRequiredService<ApplicationDbContext>();
+
+            string[] roles = { "Admin", "Manager", "Employee" };
+
+            // Create roles if not exist
+            foreach (var role in roles)
+            {
+                if (!await roleManager.RoleExistsAsync(role))
+                {
+                    await roleManager.CreateAsync(new IdentityRole(role));
+                }
+            }
+
+            // Create default admin user
+            var adminEmail = "admin@lms.com";
+            var adminUser = await userManager.FindByEmailAsync(adminEmail);
+
+            if (adminUser == null)
+            {
+                var admin = new ApplicationUser
+                {
+                    UserName = adminEmail,
+                    Email = adminEmail,
+                    EmailConfirmed = true
+                };
+
+                var result = await userManager.CreateAsync(admin, "Admin@123");
+
+                if (result.Succeeded)
+                {
+                    await userManager.AddToRoleAsync(admin, "Admin");
+                }
+            }
+
+            // Seed default leave types
+            if (!await context.LeaveTypes.AnyAsync())
+            {
+                var leaveTypes = new List<LeaveType>
+                {
+                    new LeaveType { Name = "Sick Leave", Description = "For health issues", DefaultDays = 10, IsPaid = true },
+                    new LeaveType { Name = "Casual Leave", Description = "For personal matters", DefaultDays = 7, IsPaid = true },
+                    new LeaveType { Name = "Paid Leave", Description = "Earned paid leave", DefaultDays = 15, IsPaid = true },
+                    new LeaveType { Name = "Unpaid Leave", Description = "Leave without pay", DefaultDays = 0, IsPaid = false }
+                };
+
+                await context.LeaveTypes.AddRangeAsync(leaveTypes);
+                await context.SaveChangesAsync();
+            }
+        }
+    }
+}
+
+
+---
+
+✅ 2. Update Program.cs
+
+Make sure Program.cs ends like this:
+
+var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+
+// Call the data seeder here
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    await lms.Data.DataSeeder.SeedRolesAndAdminAsync(services);
+}
+
+app.Run();
+
+
+---
+
+✅ 3. Ensure You Have This in Program.cs Before Build()
+
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
+    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddDefaultTokenProviders();
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            // Your JWT config here
+        };
+    });
+
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+
+---
+
+Let me know once you've added this — and we’ll move to the next step: registration logic (default Employee + random Manager assignment). Ready to continue?
+
