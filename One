@@ -1,236 +1,191 @@
-Great — let’s define all the core entity models based on the plan. I’ll structure them using Entity Framework Core annotations for PostgreSQL compatibility.
+Great! Let's start with Step 1: Models. I'll break down the models (entities) you'll need for the Leave Management System (LMS) based on the functional requirements you provided.
 
 
 ---
 
-1. User.cs
+1. Models (Entities)
 
-public class User
-{
-    public int Id { get; set; }
-    public string Username { get; set; } = string.Empty;
-    public string Email { get; set; } = string.Empty;
-    public string PasswordHash { get; set; } = string.Empty;
-    public UserRole Role { get; set; } = UserRole.Employee;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+The models correspond to the data structure in your PostgreSQL database. We'll define the entities for User Authentication, Leave Types, Leave Requests, Leave Balances, and Notifications.
 
-    public ICollection<LeaveRequest> LeaveRequests { get; set; }
-    public ICollection<LeaveBalance> LeaveBalances { get; set; }
-}
-
-2. Enum: UserRole.cs
-
-public enum UserRole
-{
-    Employee,
-    Manager,
-    Admin
-}
+Here are the models:
 
 
 ---
 
-3. LeaveType.cs
+a. ApplicationUser (extends IdentityUser)
+
+The ApplicationUser class will extend IdentityUser to support the authentication and user management via ASP.NET Core Identity.
+
+public class ApplicationUser : IdentityUser
+{
+    [Required]
+    public string FullName { get; set; }
+    
+    [Required]
+    public string Department { get; set; }
+    
+    public string ManagerId { get; set; }  // FK to ApplicationUser for reporting manager
+    
+    [NotMapped]
+    public string Role { get; set; }  // Store the role here for convenience, not part of the DB
+}
+
+FullName: Employee's full name.
+
+Department: Department of the employee (e.g., HR, Engineering, Sales).
+
+ManagerId: Optional foreign key pointing to another ApplicationUser, representing the manager. This is nullable as not all employees will have a manager assigned initially.
+
+Role: Not mapped directly to the database, as roles are handled by Identity, but it could be helpful in certain scenarios.
+
+
+
+---
+
+b. LeaveType
+
+The LeaveType model stores different leave types an employee can apply for.
 
 public class LeaveType
 {
     public int Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public int DefaultAllocation { get; set; }
-
-    public ICollection<LeaveRequest> LeaveRequests { get; set; }
-    public ICollection<LeaveBalance> LeaveBalances { get; set; }
+    [Required]
+    public string Name { get; set; }  // Example: Sick Leave, Casual Leave, etc.
+    
+    public string Description { get; set; }  // Optional description
+    
+    public int DefaultDays { get; set; }  // Default number of days allocated for this leave type
+    
+    public bool IsPaid { get; set; }  // Whether this leave is paid or unpaid
 }
+
+Name: Name of the leave type (e.g., Sick Leave, Paid Leave, etc.).
+
+Description: Optional field to describe the leave type.
+
+DefaultDays: Default days allocated for this leave type per year (can be configured per policy).
+
+IsPaid: Whether the leave type is paid or unpaid.
+
 
 
 ---
 
-4. LeaveBalance.cs
+c. LeaveBalance
+
+The LeaveBalance model tracks how many days of each leave type an employee has remaining.
 
 public class LeaveBalance
 {
     public int Id { get; set; }
-
-    public int UserId { get; set; }
-    public User User { get; set; }
-
-    public int LeaveTypeId { get; set; }
-    public LeaveType LeaveType { get; set; }
-
-    public int Total { get; set; }
-    public int Used { get; set; }
-    public int Remaining => Total - Used;
+    
+    public string UserId { get; set; }  // FK to ApplicationUser (Employee)
+    public ApplicationUser User { get; set; }  // Navigation property to ApplicationUser
+    
+    public int LeaveTypeId { get; set; }  // FK to LeaveType
+    public LeaveType LeaveType { get; set; }  // Navigation property to LeaveType
+    
+    public int RemainingDays { get; set; }  // Number of leave days remaining
 }
+
+UserId: Foreign key to the ApplicationUser, identifying the employee.
+
+LeaveTypeId: Foreign key to the LeaveType model, specifying which leave type the balance refers to.
+
+RemainingDays: Number of days left for that specific leave type.
+
 
 
 ---
 
-5. LeaveRequest.cs
+d. LeaveRequest
+
+The LeaveRequest model represents an employee’s request for leave, which managers approve or reject.
 
 public class LeaveRequest
 {
     public int Id { get; set; }
-
-    public int EmployeeId { get; set; }
-    public User Employee { get; set; }
-
-    public int LeaveTypeId { get; set; }
-    public LeaveType LeaveType { get; set; }
-
+    
+    public string UserId { get; set; }  // FK to ApplicationUser (Employee)
+    public ApplicationUser User { get; set; }  // Navigation property to ApplicationUser
+    
+    public int LeaveTypeId { get; set; }  // FK to LeaveType
+    public LeaveType LeaveType { get; set; }  // Navigation property to LeaveType
+    
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }
-    public string Reason { get; set; } = string.Empty;
-
-    public LeaveStatus Status { get; set; } = LeaveStatus.Pending;
-
-    public int? ManagerId { get; set; }
-    public User? Manager { get; set; }
-
-    public DateTime RequestedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? ReviewedAt { get; set; }
-    public string? ReviewerComments { get; set; }
+    
+    public int TotalDays { get; set; }  // Total number of leave days requested
+    
+    public string Reason { get; set; }  // Reason for leave
+    
+    public string Status { get; set; }  // Pending, Approved, Rejected, Canceled
+    
+    public string ManagerId { get; set; }  // FK to ApplicationUser (Manager)
+    public ApplicationUser Manager { get; set; }  // Navigation property to Manager
+    
+    public DateTime? DecisionDate { get; set; }  // Date when the manager approved/rejected the leave request
+    
+    public DateTime CreatedAt { get; set; }  // Date when the leave request was created
 }
+
+UserId: Foreign key to the employee who is requesting leave.
+
+LeaveTypeId: Foreign key to the type of leave being requested (e.g., Sick Leave).
+
+StartDate and EndDate: Dates for the leave period.
+
+TotalDays: Total days calculated based on start and end dates.
+
+Reason: Reason for the leave request.
+
+Status: The current status of the leave (Pending, Approved, Rejected, Canceled).
+
+ManagerId: FK to the manager who will approve/reject the leave.
+
+CreatedAt: Timestamp of when the leave request was created.
+
 
 
 ---
 
-6. Enum: LeaveStatus.cs
+e. Notification
 
-public enum LeaveStatus
-{
-    Pending,
-    Approved,
-    Rejected,
-    Canceled
-}
-
-
----
-
-7. Notification.cs
+The Notification model represents alerts sent to users about their leave requests or system events (e.g., new leave request, leave approved/rejected).
 
 public class Notification
 {
     public int Id { get; set; }
-
-    public int UserId { get; set; }
-    public User User { get; set; }
-
-    public string Message { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public bool IsRead { get; set; } = false;
+    
+    public string UserId { get; set; }  // FK to ApplicationUser (Employee or Manager)
+    public ApplicationUser User { get; set; }  // Navigation property to ApplicationUser
+    
+    public string Message { get; set; }  // Message content (e.g., "Your leave request was approved.")
+    
+    public string Type { get; set; }  // Email or SMS
+    
+    public bool IsRead { get; set; }  // To mark if the notification has been read
+    
+    public DateTime CreatedAt { get; set; }  // Date when the notification was created
 }
 
+UserId: Foreign key to the user who will receive the notification.
 
----
+Message: The actual notification content.
 
-Next Step
+Type: The type of notification (e.g., Email, SMS).
 
-Now that we have models ready, next is setting up:
+IsRead: Flag indicating whether the notification has been read.
 
-DbContext class (AppDbContext)
+CreatedAt: Timestamp for when the notification was created.
 
-Relationship mapping
-
-Migration and PostgreSQL setup
-
-
-Let me know if you’re ready for that, or if you want the folder structure scaffolding first.
-Awesome — let’s set up the DbContext and configure the relationships for PostgreSQL using Entity Framework Core.
 
 
 ---
 
-1. Create AppDbContext.cs
+2. Next Steps:
 
-using Microsoft.EntityFrameworkCore;
+After defining these models, the next step will be to set up your DbContext and configure the necessary relationships between these models using Entity Framework Core.
 
-public class AppDbContext : DbContext
-{
-    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) {}
-
-    public DbSet<User> Users { get; set; }
-    public DbSet<LeaveType> LeaveTypes { get; set; }
-    public DbSet<LeaveBalance> LeaveBalances { get; set; }
-    public DbSet<LeaveRequest> LeaveRequests { get; set; }
-    public DbSet<Notification> Notifications { get; set; }
-
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
-        base.OnModelCreating(modelBuilder);
-
-        // User
-        modelBuilder.Entity<User>()
-            .HasIndex(u => u.Email)
-            .IsUnique();
-
-        // LeaveBalance
-        modelBuilder.Entity<LeaveBalance>()
-            .HasOne(lb => lb.User)
-            .WithMany(u => u.LeaveBalances)
-            .HasForeignKey(lb => lb.UserId);
-
-        modelBuilder.Entity<LeaveBalance>()
-            .HasOne(lb => lb.LeaveType)
-            .WithMany(lt => lt.LeaveBalances)
-            .HasForeignKey(lb => lb.LeaveTypeId);
-
-        // LeaveRequest
-        modelBuilder.Entity<LeaveRequest>()
-            .HasOne(lr => lr.Employee)
-            .WithMany(u => u.LeaveRequests)
-            .HasForeignKey(lr => lr.EmployeeId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<LeaveRequest>()
-            .HasOne(lr => lr.Manager)
-            .WithMany()
-            .HasForeignKey(lr => lr.ManagerId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // Notification
-        modelBuilder.Entity<Notification>()
-            .HasOne(n => n.User)
-            .WithMany()
-            .HasForeignKey(n => n.UserId);
-    }
-}
-
-
----
-
-2. Register EF Core & PostgreSQL in Program.cs
-
-Make sure you’ve added the NuGet package:
-
-dotnet add package Npgsql.EntityFrameworkCore.PostgreSQL
-
-Then configure it in Program.cs:
-
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-
----
-
-3. Add Connection String in appsettings.json
-
-"ConnectionStrings": {
-  "DefaultConnection": "Host=localhost;Port=5432;Database=LeaveManagementDB;Username=postgres;Password=yourpassword"
-}
-
-
----
-
-4. Add Migrations & Update Database
-
-Run the following commands in terminal:
-
-dotnet ef migrations add InitialCreate
-dotnet ef database update
-
-
----
-
-Let me know when this is done, and we’ll move to DTOs and Authentication setup (JWT + Register/Login).
+Would you like to proceed with creating the DbContext for these models next?
 
