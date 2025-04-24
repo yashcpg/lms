@@ -1,0 +1,65 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using lms.Models;
+
+namespace lms.Data
+{
+    public static class DataSeeder
+    {
+        public static async Task SeedRolesAndAdminAsync(IServiceProvider serviceProvider)
+        {
+            var roleManager = serviceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+            var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var context = serviceProvider.GetRequiredService<ApplicationDbContext>();
+
+            string[] roles = { "Admin", "Manager", "Employee" };
+
+            // Create roles if they don't exist
+            foreach (var role in roles)
+            {
+                if (!await roleManager.RoleExistsAsync(role))
+                {
+                    await roleManager.CreateAsync(new IdentityRole(role));
+                }
+            }
+
+            // Create default admin user
+            var adminEmail = "admin@lms.com";
+            var adminUser = await userManager.FindByEmailAsync(adminEmail);
+
+            if (adminUser == null)
+            {
+                var admin = new ApplicationUser
+                {
+                    UserName = adminEmail,
+                    Email = adminEmail,
+                    EmailConfirmed = true,
+                    FullName = "System Admin",
+                    Department = "Administration",
+                    ManagerId = null // Optional: admin doesn't need a manager
+                };
+
+                var result = await userManager.CreateAsync(admin, "Admin@123");
+
+                if (result.Succeeded)
+                {
+                    await userManager.AddToRoleAsync(admin, "Admin");
+                }
+            }
+
+            // Seed default leave types if none exist
+            if (!await context.LeaveTypes.AnyAsync())
+            {
+                var leaveTypes = new List<LeaveType>
+                {
+                    new LeaveType { Name = "Sick Leave", Description = "For health issues", DefaultDays = 10, IsPaid = true },
+                    new LeaveType { Name = "Casual Leave", Description = "For personal matters", DefaultDays = 7, IsPaid = true },
+                    new LeaveType { Name = "Paid Leave", Description = "Earned paid leave", DefaultDays = 15, IsPaid = true },
+                    new LeaveType { Name = "Unpaid Leave", Description = "Leave without pay", DefaultDays = 0, IsPaid = false }
+                };
+
+                await context.LeaveTypes.AddRangeAsync(leaveTypes);
+                await context.SaveChangesAsync();
+            }
+        }
+    }
